@@ -1,13 +1,13 @@
 #!/usr/bin/python3
 # -*- coding:utf-8 -*-
 
-from bluetooth import *
-from wifi import Cell, Scheme
 import time
 import os
 import json
 import subprocess
 import codecs
+import bluetooth
+from wifi import Cell, Scheme
 
 
 wifi_interface_name = 'wlan0'
@@ -21,18 +21,20 @@ def get_wifi_info(interface):
 
     # Get info of each cell
     for cell in cells:
-        js['Cells'].append(
-            {
-                'id':index,
-                'ssid':cell.ssid.encode('raw_unicode_escape').decode('utf-8'),
-                'mac':cell.address,
-                'signal':cell.signal,
-                'frequency':cell.frequency,
-                'encrypted':cell.encrypted,
-                'quality':cell.quality
-            }
-        )
-        index += 1
+        #print(f'{cell.ssid}, {type(cell.ssid)}')
+        if len(cell.ssid) != 0 and cell.ssid.find('\\x') < 0:
+            js['Cells'].append(
+                {
+                    'id':index,
+                    'ssid':cell.ssid.encode('raw_unicode_escape').decode('utf-8'),
+                    'mac':cell.address,
+                    'signal':cell.signal,
+                    'frequency':cell.frequency,
+                    'encrypted':cell.encrypted,
+                    'quality':cell.quality
+                }
+            )
+            index += 1
 
     # Get current Wi-Fi cell info if connected
     p = subprocess.Popen(['wpa_cli', '-i', interface, 'status'],
@@ -64,19 +66,19 @@ try:
         js = get_wifi_info(wifi_interface_name)
         print(js)
 
-        server_sock = BluetoothSocket(RFCOMM)
-        server_sock.bind(("", PORT_ANY))
+        server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+        server_sock.bind(("", bluetooth.PORT_ANY))
         server_sock.listen(1)
 
         port = server_sock.getsockname()[1]
 
         uuid = "815425a5-bfac-47bf-9321-c5ff980b5e11"
 
-        advertise_service(server_sock,
-				          "RPI Wi-Fi Config",
-                          service_id = uuid,
-                          service_classes = [uuid, SERIAL_PORT_CLASS],
-                          profiles = [SERIAL_PORT_PROFILE])
+        bluetooth.advertise_service(server_sock,
+				                    "RPI Wi-Fi Config",
+                                    service_id = uuid,
+                                    service_classes = [uuid, bluetooth.SERIAL_PORT_CLASS],
+                                    profiles = [bluetooth.SERIAL_PORT_PROFILE])
 
         print(f'Waiting for connection on RFCOMM channel {port}')
 
@@ -88,6 +90,6 @@ try:
 
         time.sleep(10)
 
-except (KeyboardInterrupt, SystemExit):
+except KeyboardInterrupt as e:
+    print(e)
     print('\nExiting\n')
-
