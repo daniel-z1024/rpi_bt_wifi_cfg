@@ -12,6 +12,7 @@ from wifi import Cell, Scheme
 
 wifi_interface_name = 'wlan0'
 
+
 def get_wifi_info(interface):    
     # Get all detected Wi-Fi cells
     cells = Cell.all(interface)
@@ -22,7 +23,7 @@ def get_wifi_info(interface):
     # Get info of each cell
     for cell in cells:
         #print(f'{cell.ssid}, {type(cell.ssid)}')
-        if len(cell.ssid) != 0 and cell.ssid.find('\\x') < 0:
+        if cell.ssid != '' and cell.ssid.find('\\x') < 0:
             js['Cells'].append(
                 {
                     'id':index,
@@ -52,9 +53,17 @@ def get_wifi_info(interface):
             js['Current']['mac']=l.split("=")[1].upper()
         elif l.startswith('ip_address='):
             js['Current']['ip']=l.split('=')[1]
+    
+    print('Detected Wi-Fi:')
+    for l in js['Cells']:
+        print(l)
+
+    print('Connected Wi-Fi:')
+    print(js['Current'])
 
     # Convert all cell info to JSON data
-    js_data = json.dumps(js, indent=4, separators=(',', ': '))
+    #js_data = json.dumps(js, indent=4, separators=(',', ': '))
+    js_data = json.dumps(js)
 
     return js_data
 
@@ -63,9 +72,6 @@ try:
     os.system("bluetoothctl power on")
     os.system("bluetoothctl discoverable on")
     while True:
-        js = get_wifi_info(wifi_interface_name)
-        print(js)
-
         server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
         server_sock.bind(("", bluetooth.PORT_ANY))
         server_sock.listen(1)
@@ -85,8 +91,24 @@ try:
         client_sock, client_info = server_sock.accept()
         print(f'Accepted connection from {client_info}')
 
-        client_sock.close()
-        server_sock.close()
+        while True:
+            data = client_sock.recv(1024)
+            data = data.decode('utf-8')
+            print(f'RECV: {data}')
+
+            if data.lower() == 'get':
+                js = get_wifi_info(wifi_interface_name)
+
+                data = bytes(js, encoding='utf-8')
+                size = len(data)
+                print(f'Send data stream length {size}')
+                client_sock.send(str(size).encode('utf-8'))
+                print(f'Send data stream content')
+                client_sock.send(data)
+
+                client_sock.close()
+                server_sock.close()
+                break
 
         time.sleep(10)
 

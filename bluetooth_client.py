@@ -52,6 +52,8 @@ try:
         total_data += data.decode("utf-8")
 
     json_data = json.loads(total_data)
+
+    # Format JSON data for print
     #json_data = json.dumps(json_data, indent=4, separators=(',', ': '))
 
     print('Received JSON data:')
