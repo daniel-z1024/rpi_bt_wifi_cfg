@@ -2,15 +2,18 @@
 # -*- coding:utf-8 -*-
 
 import time
-import os
 import json
 import subprocess
-import codecs
 import bluetooth
-from wifi import Cell, Scheme
+from wifi import Cell
 
 
 wifi_interface_name = 'wlan0'
+
+
+def bluetooth_enable():
+    subprocess.call(['bluetoothctl', 'power', 'on'])
+    subprocess.call(['bluetoothctl', 'discoverable', 'on'])
 
 
 def get_wifi_info(interface):    
@@ -22,7 +25,6 @@ def get_wifi_info(interface):
 
     # Get info of each cell
     for cell in cells:
-        #print(f'{cell.ssid}, {type(cell.ssid)}')
         if cell.ssid != '' and cell.ssid.find('\\x') < 0:
             js['Cells'].append(
                 {
@@ -54,6 +56,7 @@ def get_wifi_info(interface):
         elif l.startswith('ip_address='):
             js['Current']['ip']=l.split('=')[1]
     
+    # Print Wi-Fi info list
     print('Detected Wi-Fi:')
     for l in js['Cells']:
         print(l)
@@ -68,50 +71,80 @@ def get_wifi_info(interface):
     return js_data
 
 
-try:
-    os.system("bluetoothctl power on")
-    os.system("bluetoothctl discoverable on")
+def bluetooth_start_server():
+    sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
+    sock.bind(("", bluetooth.PORT_ANY))
+    sock.listen(1)
+
+    port = sock.getsockname()[1]
+
+    uuid = "815425a5-bfac-47bf-9321-c5ff980b5e11"
+
+    bluetooth.advertise_service(sock,
+                                "RPI Wi-Fi Config",
+                                service_id = uuid,
+                                service_classes = [uuid, bluetooth.SERIAL_PORT_CLASS],
+                                profiles = [bluetooth.SERIAL_PORT_PROFILE])
+
+    print(f'Waiting for connection on RFCOMM channel {port}')
+
+    return sock
+
+def main_task():
     while True:
-        server_sock = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
-        server_sock.bind(("", bluetooth.PORT_ANY))
-        server_sock.listen(1)
+        # Start bluetooth RFCOMM server
+        server_sock = bluetooth_start_server()
 
-        port = server_sock.getsockname()[1]
-
-        uuid = "815425a5-bfac-47bf-9321-c5ff980b5e11"
-
-        bluetooth.advertise_service(server_sock,
-				                    "RPI Wi-Fi Config",
-                                    service_id = uuid,
-                                    service_classes = [uuid, bluetooth.SERIAL_PORT_CLASS],
-                                    profiles = [bluetooth.SERIAL_PORT_PROFILE])
-
-        print(f'Waiting for connection on RFCOMM channel {port}')
-
+        # Wait for client connection
         client_sock, client_info = server_sock.accept()
         print(f'Accepted connection from {client_info}')
 
         while True:
+            # Receive command from client
             data = client_sock.recv(1024)
             data = data.decode('utf-8')
             print(f'RECV: {data}')
 
             if data.lower() == 'get':
+                # Get current Wi-Fi info
                 js = get_wifi_info(wifi_interface_name)
 
+                # Convert JSON data to byte stream
                 data = bytes(js, encoding='utf-8')
+
+                # Send byte stream length to client
                 size = len(data)
-                print(f'Send data stream length {size}')
+                print(f'Send byte stream length {size}')
                 client_sock.send(str(size).encode('utf-8'))
-                print(f'Send data stream content')
+                
+                # Send byte stream content to client
+                print(f'Send byte stream content')
                 client_sock.send(data)
 
+                # Close socket after sending finish
                 client_sock.close()
                 server_sock.close()
                 break
 
+        # Interval time before start next server listening
         time.sleep(10)
 
-except KeyboardInterrupt as e:
-    print(e)
-    print('\nExiting\n')
+
+def main():
+    try:
+        # Enable bluetooth function
+        bluetooth_enable()
+
+        # Scan Wi-Fi one time when startup
+        get_wifi_info(wifi_interface_name)
+
+        # Run main task
+        main_task()
+
+    except KeyboardInterrupt as e:
+        print(e)
+        print('\nExiting\n')
+
+
+if __name__ == "__main__":
+    main()
