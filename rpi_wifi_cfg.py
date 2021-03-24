@@ -90,60 +90,80 @@ def bluetooth_start_server():
 
     return sock
 
+
+def send_json_data(sock, js):
+    # Convert JSON data to byte stream
+    data = bytes(js, encoding='utf-8')
+
+    # Send byte stream length to client
+    size = len(data)
+    print(f'Send byte stream length {size}')
+    sock.send(str(size).encode('utf-8'))
+    
+    # Send byte stream content to client
+    print(f'Send byte stream content')
+    sock.send(data)
+
+
+def send_wifi_info(sock):
+    # Get current Wi-Fi info
+    js = get_wifi_info(wifi_interface_name)
+    send_json_data(sock, js)
+
+
 def main_task():
-    while True:
-        # Start bluetooth RFCOMM server
-        server_sock = bluetooth_start_server()
-
-        # Wait for client connection
-        client_sock, client_info = server_sock.accept()
-        print(f'Accepted connection from {client_info}')
-
+    try:
         while True:
-            # Receive command from client
-            data = client_sock.recv(1024)
-            data = data.decode('utf-8')
-            print(f'RECV: {data}')
+            # Enable bluetooth function
+            bluetooth_enable()
 
-            if data.lower() == 'get':
-                # Get current Wi-Fi info
-                js = get_wifi_info(wifi_interface_name)
+            # Start bluetooth RFCOMM server
+            server_sock = bluetooth_start_server()
 
-                # Convert JSON data to byte stream
-                data = bytes(js, encoding='utf-8')
+            # Wait for client connection
+            print('Waiting for client connection')
+            client_sock = 0
+            client_sock, client_info = server_sock.accept()
+            print(f'Accepted connection from {client_info}')
 
-                # Send byte stream length to client
-                size = len(data)
-                print(f'Send byte stream length {size}')
-                client_sock.send(str(size).encode('utf-8'))
-                
-                # Send byte stream content to client
-                print(f'Send byte stream content')
-                client_sock.send(data)
+            while True:
+                # Waiting for command from client
+                print('Waiting for command from client')
+                try:
+                    data = client_sock.recv(1024)
+                except bluetooth.btcommon.BluetoothError:
+                    # Client connection closed
+                    print('Connection closed by client')
+                    client_sock.close()
+                    server_sock.close()
+                    break
 
-                # Close socket after sending finish
-                client_sock.close()
-                server_sock.close()
-                break
+                # Parse received command
+                data = data.decode('utf-8')
+                print(f'RECV Command: {data}')
 
-        # Interval time before start next server listening
-        time.sleep(10)
+                data = data.lower()
+                if data == 'get':
+                    send_wifi_info(client_sock)
+
+            # Interval time before starting next server listening
+            print('Time delay...')
+            time.sleep(10)
+
+    except KeyboardInterrupt as e:
+        if client_sock != 0:
+            client_sock.close()
+        server_sock.close()
+        print(e)
+        print('Exiting\n')
 
 
 def main():
-    try:
-        # Enable bluetooth function
-        bluetooth_enable()
+    # Scan Wi-Fi one time when startup
+    get_wifi_info(wifi_interface_name)
 
-        # Scan Wi-Fi one time when startup
-        get_wifi_info(wifi_interface_name)
-
-        # Run main task
-        main_task()
-
-    except KeyboardInterrupt as e:
-        print(e)
-        print('\nExiting\n')
+    # Run main task
+    main_task()
 
 
 if __name__ == "__main__":
