@@ -63,10 +63,14 @@ def bluetooth_cli_recv(sock):
             recv_size += data_len
             print(f'{recv_size}/{data_size} data received')
             total_data += data.decode("utf-8")
+        
+        try:
+            json_data = json.loads(total_data)
+            return json_data
+        except json.decoder.JSONDecodeError:
+            print('Received data is not in JSON format!')
+            return {''}
 
-        json_data = json.loads(total_data)
-
-        return json_data
     except bluetooth.btcommon.BluetoothError:
         print('Connection closed by server, exit!')
         sock.close()
@@ -78,6 +82,17 @@ def bluetooth_cli_get_wifi_list(sock):
 
     json_data = bluetooth_cli_recv(sock)
     print('Rx Wi-Fi scan list:')
+    print(json_data)
+
+
+def bluetooth_cli_set_wifi_params(sock):
+    ssid = input("Please enter Wi-Fi ssid name: ")
+    password = input("Please enter Wi-Fi password: ")
+
+    cmd = '{"Command":"SetWiFiParams","SSID":"'+ssid+'","Password":"'+password+'"}'
+    bluetooth_cli_send(sock, cmd)
+
+    json_data = bluetooth_cli_recv(sock)
     print(json_data)
 
 
@@ -97,6 +112,8 @@ def main():
     sock = bluetooth_cli_connect(target_addr, 1)
 
     bluetooth_cli_get_wifi_list(sock)
+
+    bluetooth_cli_set_wifi_params(sock)
 
     bluetooth_cli_get_wifi_connect_status(sock)
 

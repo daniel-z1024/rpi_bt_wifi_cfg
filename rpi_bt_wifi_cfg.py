@@ -120,8 +120,46 @@ def send_wifi_info(sock):
     send_json_data(sock, js)
 
 
-def run_wifi_connection(sock, data):
-    pass
+def run_wifi_connect(ssid, psk):
+    wpa_supplicant_conf = "/etc/wpa_supplicant/wpa_supplicant.conf"
+
+    # write wifi config to file
+    with open(wpa_supplicant_conf, 'a+') as f:
+        f.write('network={\n')
+        f.write('    ssid="' + ssid + '"\n')
+        f.write('    psk="' + psk + '"\n')
+        f.write('}\n')
+
+    # Restart wifi adapter
+    subprocess.call(['sudo', 'ifconfig', wifi_interface_name, 'down'])
+    time.sleep(2)
+
+    subprocess.call(['sudo', 'ifconfig', wifi_interface_name, 'up'])
+    time.sleep(10)
+
+    subprocess.call(['sudo', 'iwconfig', wifi_interface_name])
+
+
+def set_wifi_params(sock, data):
+    if data.__contains__('SSID'):
+        ssid = data['SSID']
+    else:
+        print('No ssid parameter!')
+        return
+
+    if data.__contains__('Password'):
+        password = data['Password']
+    else:
+        password = ''
+    
+    run_wifi_connect(ssid, password)
+
+    data = { "Command":"SetWiFiParams","Result":"OK" }
+    js_data = json.dumps(data)
+
+    print(js_data)
+
+    send_json_data(sock, js_data)
 
 
 def get_wifi_connect_status(sock):
@@ -146,7 +184,7 @@ def cmd_data_proc(sock, data):
         if data[cmd_key] == 'GetWiFiScanList':
             send_wifi_info(sock)
         elif data[cmd_key] == 'SetWiFiParams':
-            run_wifi_connection(sock, data)
+            set_wifi_params(sock, data)
         elif data[cmd_key] == 'GetWiFiConnectionStatus':
             get_wifi_connect_status(sock)
         else:
@@ -182,11 +220,15 @@ def main_task():
 
                 # Convert received data to JSON command
                 data = data.decode('utf-8')
-                json_data = json.loads(data)
-                print(f'RECV Command: {json_data}')
+                print(f'RECV Command: {data}')
 
-                # json command processing
-                cmd_data_proc(client_sock, json_data)
+                try:
+                    json_data = json.loads(data)
+
+                    # json command processing
+                    cmd_data_proc(client_sock, json_data)
+                except json.decoder.JSONDecodeError:
+                    print('Command is not in JSON format!')
 
             # Interval time before starting next server listening
             print('Time delay...')
