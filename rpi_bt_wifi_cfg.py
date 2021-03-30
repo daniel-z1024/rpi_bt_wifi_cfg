@@ -16,12 +16,35 @@ def bluetooth_enable():
     subprocess.call(['bluetoothctl', 'discoverable', 'on'])
 
 
+def get_connected_wifi_info(interface, key):
+    js = { key:{} }
+
+    # Get current Wi-Fi cell info if connected
+    p = subprocess.Popen(['wpa_cli', '-i', interface, 'status'],
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    out, err = p.communicate()
+    p.wait()
+    result=out.decode().strip().split('\n')
+    for l in result:
+        if l.startswith('ssid='):
+            js[key]['ssid']=l.split('=')[1]
+        elif l.startswith('freq='):
+            js[key]['freq']=l.split('=')[1]
+        elif l.startswith('bssid='):
+            js[key]['mac']=l.split("=")[1].upper()
+        elif l.startswith('ip_address='):
+            js[key]['ip']=l.split('=')[1]
+
+    return js
+
+
 def get_wifi_info(interface):    
     # Get all detected Wi-Fi cells
     cells = Cell.all(interface)
 
     index = 1
-    js = {'Cells':[], 'Current':{} }
+    js = { 'Cells':[] }
 
     # Get info of each cell
     for cell in cells:
@@ -38,23 +61,9 @@ def get_wifi_info(interface):
                 }
             )
             index += 1
-
-    # Get current Wi-Fi cell info if connected
-    p = subprocess.Popen(['wpa_cli', '-i', interface, 'status'],
-                         stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE)
-    out, err = p.communicate()
-    p.wait()
-    result=out.decode().strip().split('\n')
-    for l in result:
-        if l.startswith('ssid='):
-            js['Current']['ssid']=l.split('=')[1]
-        elif l.startswith('freq='):
-            js['Current']['freq']=l.split('=')[1]
-        elif l.startswith('bssid='):
-            js['Current']['mac']=l.split("=")[1].upper()
-        elif l.startswith('ip_address='):
-            js['Current']['ip']=l.split('=')[1]
+    
+    # Combine Wi-Fi cell info and current connected Wi-Fi info
+    js.update(get_connected_wifi_info(wifi_interface_name, 'Current'))
     
     # Print Wi-Fi info list
     print('Detected Wi-Fi:')
@@ -111,6 +120,39 @@ def send_wifi_info(sock):
     send_json_data(sock, js)
 
 
+def run_wifi_connection(sock, data):
+    pass
+
+
+def get_wifi_connect_status(sock):
+    data = { "Command":"GetWiFiConnectionStatus","Status":0 }
+    
+    data.update(get_connected_wifi_info(wifi_interface_name, 'Current'))
+
+    if data['Current']['ssid'] != '' and data['Current']['ip'] != '':
+        data['Status'] = 1
+
+    js_data = json.dumps(data)
+
+    print(js_data)
+
+    send_json_data(sock, js_data)
+
+
+def cmd_data_proc(sock, data):
+    cmd_key = 'Command'
+
+    if data.__contains__(cmd_key):
+        if data[cmd_key] == 'GetWiFiScanList':
+            send_wifi_info(sock)
+        elif data[cmd_key] == 'SetWiFiParams':
+            run_wifi_connection(sock, data)
+        elif data[cmd_key] == 'GetWiFiConnectionStatus':
+            get_wifi_connect_status(sock)
+        else:
+            print('Ignore received unknown command and wait for next command...')
+
+
 def main_task():
     try:
         while True:
@@ -138,13 +180,13 @@ def main_task():
                     server_sock.close()
                     break
 
-                # Parse received command
+                # Convert received data to JSON command
                 data = data.decode('utf-8')
-                print(f'RECV Command: {data}')
+                json_data = json.loads(data)
+                print(f'RECV Command: {json_data}')
 
-                data = data.lower()
-                if data == 'get':
-                    send_wifi_info(client_sock)
+                # json command processing
+                cmd_data_proc(client_sock, json_data)
 
             # Interval time before starting next server listening
             print('Time delay...')
