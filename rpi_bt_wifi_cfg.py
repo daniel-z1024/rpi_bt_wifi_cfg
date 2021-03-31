@@ -135,10 +135,14 @@ def run_wifi_connect(ssid, psk):
     time.sleep(2)
 
     subprocess.call(['sudo', 'ifconfig', wifi_interface_name, 'up'])
+    time.sleep(6)
+
+    subprocess.call(['sudo', 'killall', 'wpa_supplicant'])
+    time.sleep(1)
+    subprocess.call(['sudo', 'wpa_supplicant', '-B', '-i', wifi_interface_name, '-c', '/etc/wpa_supplicant/wpa_supplicant.conf'])
+    time.sleep(2)
+    subprocess.call(['sudo', 'dhcpcd', wifi_interface_name])
     time.sleep(10)
-
-    subprocess.call(['sudo', 'iwconfig', wifi_interface_name])
-
 
 def set_wifi_params(sock, data):
     if data.__contains__('SSID'):
@@ -167,8 +171,11 @@ def get_wifi_connect_status(sock):
     
     data.update(get_connected_wifi_info(wifi_interface_name, 'Current'))
 
-    if data['Current']['ssid'] != '' and data['Current']['ip'] != '':
-        data['Status'] = 1
+    try:
+        if data['Current']['ssid'] != '' and data['Current']['ip'] != '':
+            data['Status'] = 1
+    except KeyError:
+	    print('Wi-Fi connection info not found!')
 
     js_data = json.dumps(data)
 
