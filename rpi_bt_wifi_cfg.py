@@ -139,7 +139,7 @@ def run_wifi_connect(ssid, psk):
 
     subprocess.call(['sudo', 'killall', 'wpa_supplicant'])
     time.sleep(1)
-    subprocess.call(['sudo', 'wpa_supplicant', '-B', '-i', wifi_interface_name, '-c', '/etc/wpa_supplicant/wpa_supplicant.conf'])
+    subprocess.call(['sudo', 'wpa_supplicant', '-B', '-i', wifi_interface_name, '-c', wpa_supplicant_conf])
     time.sleep(2)
     subprocess.call(['sudo', 'dhcpcd', wifi_interface_name])
     time.sleep(10)
